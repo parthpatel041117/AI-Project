@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EcoSort – Smart Waste Classifier</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0a0f0a;
+    --surface: #111811;
+    --card:    #151c15;
+    --card2:   #1a221a;
+    --border:  rgba(57,255,100,0.10);
+    --border2: rgba(57,255,100,0.22);
+    --neon:    #39ff64;
+    --neon-dim:rgba(57,255,100,0.12);
+    --neon-mid:rgba(57,255,100,0.30);
+    --text:    #e8f5e8;
+    --muted:   #6b8f6b;
+  }
+
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* NAV */
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 2rem; height: 60px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(10,15,10,0.92); backdrop-filter: blur(12px);
+    position: sticky; top: 0; z-index: 99;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .logo-box { width: 34px; height: 34px; border-radius: 9px; background: var(--neon-dim);
+    border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; }
+  .logo-box svg { width: 18px; height: 18px; stroke: var(--neon); fill: none; stroke-width: 2; }
+  .logo-text { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: var(--text); }
+  .logo-text span { color: var(--neon); }
+  .nav-pill { font-size: 11px; color: var(--neon); background: var(--neon-dim);
+    border: 1px solid var(--border2); padding: 3px 10px; border-radius: 50px; letter-spacing: 0.5px; }
+
+  /* HERO */
+  .hero { text-align: center; padding: 4.5rem 1.5rem 2.5rem; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 520px; height: 300px;
+    background: radial-gradient(ellipse, rgba(57,255,100,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-label { display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border2); padding: 4px 14px; border-radius: 50px;
+    font-size: 11.5px; color: var(--neon); letter-spacing: 0.8px; text-transform: uppercase;
+    margin-bottom: 1.5rem; background: var(--neon-dim); }
+  .dot-live { width: 6px; height: 6px; border-radius: 50%; background: var(--neon); animation: blink 1.5s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+  .hero h1 { font-family: 'Syne', sans-serif; font-size: clamp(30px,6vw,54px);
+    font-weight: 800; line-height: 1.08; letter-spacing: -2px; color: var(--text); margin-bottom: 1rem; }
+  .hero h1 span { color: var(--neon); }
+  .hero p { font-size: 15px; color: var(--muted); max-width: 400px; margin: 0 auto; line-height: 1.7; }
+
+  /* CONTAINER */
+  .container { max-width: 620px; margin: 0 auto; padding: 0 1.5rem 5rem; }
+  .main-card { background: var(--card); border: 1px solid var(--border); border-radius: 24px; overflow: hidden; }
+
+  /* UPLOAD */
+  .upload-section { padding: 1.75rem; border-bottom: 1px solid var(--border); }
+  .upload-zone { border: 2px dashed rgba(57,255,100,0.18); border-radius: 16px;
+    padding: 2.5rem 1rem; text-align: center; cursor: pointer; position: relative;
+    transition: all 0.22s; background: var(--surface); }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--neon); background: rgba(57,255,100,0.04); }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .up-icon { width: 52px; height: 52px; margin: 0 auto 1rem; background: var(--neon-dim);
+    border-radius: 50%; border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; }
+  .up-icon svg { width: 22px; height: 22px; stroke: var(--neon); fill: none; stroke-width: 2; }
+  .up-title { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+  .up-sub { font-size: 12.5px; color: var(--muted); }
+
+  .preview-wrap { display: none; position: relative; margin-top: 1rem; }
+  .preview-img { width: 100%; max-height: 240px; object-fit: contain; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface); display: block; }
+  .clear-btn { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px;
+    background: rgba(10,15,10,0.85); border: 1px solid var(--border2); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .clear-btn svg { width: 13px; height: 13px; stroke: var(--muted); fill: none; stroke-width: 2; }
+
+  /* BTN */
+  .btn-area { padding: 1.25rem 1.75rem; border-bottom: 1px solid var(--border); }
+  .classify-btn { width: 100%; padding: 15px; background: var(--neon); color: #0a0f0a;
+    border: none; border-radius: 14px; cursor: pointer;
+    font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; gap: 9px; transition: all 0.2s; }
+  .classify-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 28px rgba(57,255,100,0.3); }
+  .classify-btn:disabled { opacity: 0.28; cursor: not-allowed; transform: none; box-shadow: none; }
+  .classify-btn svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2.5; }
+
+  /* LOADER */
+  .loader { display: none; padding: 2.5rem; text-align: center; }
+  .spinner { width: 42px; height: 42px; margin: 0 auto 1rem;
+    border: 2px solid var(--border2); border-top-color: var(--neon);
+    border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-msg { font-size: 13px; color: var(--muted); }
+
+  /* ERROR */
+  .error-box { margin: 0 1.75rem 1.25rem; padding: 12px 16px;
+    background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.25);
+    border-radius: 12px; color: #fca5a5; font-size: 13.5px; display: none; }
+
+  /* EMPTY */
+  .empty-state { padding: 3rem 1.75rem; text-align: center; color: var(--muted); }
+  .empty-icon { width: 56px; height: 56px; margin: 0 auto 1rem; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; }
+  .empty-icon svg { width: 24px; height: 24px; stroke: var(--muted); fill: none; stroke-width: 1.5; }
+  .empty-state h3 { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+  .empty-state p { font-size: 13px; line-height: 1.6; }
+
+  /* RESULT */
+  .result-section { display: none; animation: fadeUp 0.4s ease; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; } }
+
+  /* CAT HERO */
+  .cat-hero { padding: 2.25rem 1.75rem 1.5rem; text-align: center; }
+  .cat-ring { width: 90px; height: 90px; border-radius: 50%; margin: 0 auto 1rem;
+    display: flex; align-items: center; justify-content: center; font-size: 36px; border: 2px solid; }
+  .cat-label { font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 800;
+    letter-spacing: -1px; margin-bottom: 4px; }
+  .cat-detail { font-size: 13px; color: var(--muted); }
+
+  /* ALL PREDICTIONS BAR */
+  .all-preds { padding: 0 1.75rem 1.5rem; }
+  .pred-label { font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 0.85rem; }
+  .pred-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .pred-name { font-size: 13px; color: var(--text); width: 70px; flex-shrink: 0; }
+  .pred-track { flex: 1; height: 6px; background: var(--card2); border-radius: 99px; overflow: hidden; }
+  .pred-fill { height: 100%; border-radius: 99px; transition: width 0.9s cubic-bezier(.4,0,.2,1); }
+  .pred-pct { font-size: 12px; font-weight: 600; width: 36px; text-align: right; }
+
+  /* TIPS */
+  .info-block { padding: 1.25rem 1.75rem; border-top: 1px solid var(--border); }
+  .block-label { font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 0.85rem; }
+  .tip-list { display: flex; flex-direction: column; gap: 9px; }
+  .tip-row { display: flex; gap: 10px; align-items: flex-start; }
+  .tip-num { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center;
+    justify-content: center; font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 800;
+    flex-shrink: 0; margin-top: 1px; }
+  .tip-text { font-size: 13.5px; color: var(--text); line-height: 1.55; }
+
+  /* IMPACT */
+  .impact-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+  .impact-chip { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 10px; text-align: center; }
+  .impact-val { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .impact-lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+  footer { text-align: center; padding: 2rem; font-size: 12px; color: var(--muted);
+    border-top: 1px solid var(--border); }
+  footer span { color: var(--neon); }
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="logo" href="#">
+    <div class="logo-box">
+      <svg viewBox="0 0 24 24"><path d="M7 19H4.815a1.83 1.83 0 0 1-1.57-2.755L7.183 8.35a2 2 0 0 1 3.634 0L13 12.246"/><path d="M12.832 6.4a2 2 0 0 1 3.59 0L21 16.5a2 2 0 0 1-1.75 2.978H12"/><path d="M3 16.5h4M16 20l2-2-2-2"/></svg>
+    </div>
+    <span class="logo-text">Eco<span>Sort</span></span>
+  </a>
+  <span class="nav-pill">AI Waste Classifier</span>
+</nav>
+
+<section class="hero">
+  <div class="hero-label"><div class="dot-live"></div> Powered by Teachable Machine</div>
+  <h1>Classify.<br><span>Dispose right.</span></h1>
+  <p>Upload a photo of your waste — our AI instantly tells you if it's Plastic, Paper, Glass, Metal, or Organic.</p>
+</section>
+
+<div class="container">
+  <div class="main-card">
+
+    <!-- UPLOAD -->
+    <div class="upload-section">
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept="image/*">
+        <div class="up-icon">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="up-title">Drop your waste image here</div>
+        <div class="up-sub">or click to browse · JPG, PNG, WEBP</div>
+      </div>
+      <div class="preview-wrap" id="previewWrap">
+        <img id="previewImg" class="preview-img" alt="Preview">
+        <div class="clear-btn" id="clearBtn">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- BTN -->
+    <div class="btn-area">
+      <button class="classify-btn" id="classifyBtn" disabled>
+        <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        Classify Now
+      </button>
+    </div>
+
+    <!-- LOADER -->
+    <div class="loader" id="loader">
+      <div class="spinner"></div>
+      <div class="loader-msg" id="loaderMsg">Loading AI model…</div>
+    </div>
+
+    <!-- ERROR -->
+    <div class="error-box" id="errorBox"></div>
+
+    <!-- EMPTY -->
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <h3>Ready to classify</h3>
+      <p>Upload a photo of your waste item above,<br>then hit Classify Now.</p>
+    </div>
+
+    <!-- RESULT -->
+    <div class="result-section" id="resultSection">
+
+      <!-- Category -->
+      <div class="cat-hero">
+        <div class="cat-ring" id="catRing"></div>
+        <div class="cat-label" id="catLabel"></div>
+        <div class="cat-detail" id="catDetail"></div>
+      </div>
+
+      <!-- All predictions -->
+      <div class="all-preds">
+        <div class="pred-label">All predictions</div>
+        <div id="predBars"></div>
+      </div>
+
+      <!-- Tips -->
+      <div class="info-block">
+        <div class="block-label">How to dispose</div>
+        <div class="tip-list" id="tipList"></div>
+      </div>
+
+      <!-- Impact -->
+      <div class="info-block">
+        <div class="block-label">Environmental Impact</div>
+        <div class="impact-row">
+          <div class="impact-chip"><div class="impact-val" id="iCO2">—</div><div class="impact-lbl">CO₂ saved (kg)</div></div>
+          <div class="impact-chip"><div class="impact-val" id="iWater">—</div><div class="impact-lbl">Water saved (L)</div></div>
+          <div class="impact-chip"><div class="impact-val" id="iScore">—</div><div class="impact-lbl">Eco-score</div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<footer>Powered by <span>Teachable Machine</span> · EcoSort · Applied AI Mini Project</footer>
+
+<script>
+  // ═══════════════════════════════════════════════
+  //   PASTE YOUR TEACHABLE MACHINE MODEL URL HERE
+  // ═══════════════════════════════════════════════
+  const TM_URL = "https://teachablemachine.withgoogle.com/models/y7hqwwOY6/";
+  // ═══════════════════════════════════════════════
+
+  // Category data — matches your exact TM class names
+  const CATS = {
+    "Plastic": {
+      icon: "🧴", color: "#3ec9ff",
+      detail: "Recyclable · Blue bin",
+      tips: [
+        "Rinse the item before disposing to remove food residue.",
+        "Check the recycling number (1–7) on the bottom — most facilities accept 1 & 2.",
+        "Crush bottles to save space in the recycling bin."
+      ],
+      co2: "0.5", water: "15", score: "B+"
+    },
+    "Paper": {
+      icon: "📄", color: "#ffd966",
+      detail: "Recyclable · Paper bin",
+      tips: [
+        "Keep paper dry — wet paper cannot be recycled.",
+        "Remove any plastic windows from envelopes before recycling.",
+        "Shredded paper should be bagged separately as it clogs sorting machines."
+      ],
+      co2: "0.3", water: "10", score: "A"
+    },
+    "Glass": {
+      icon: "🫙", color: "#a78bfa",
+      detail: "Recyclable · Glass bin",
+      tips: [
+        "Rinse jars and bottles before placing in the glass bin.",
+        "Do not mix with broken glass — wrap broken glass in newspaper before disposal.",
+        "Lids and caps should be removed and placed in metal recycling."
+      ],
+      co2: "0.4", water: "8", score: "A-"
+    },
+    "Metal": {
+      icon: "🥫", color: "#94a3b8",
+      detail: "Recyclable · Metal bin",
+      tips: [
+        "Rinse cans to remove food residue before recycling.",
+        "Aluminium cans are infinitely recyclable — always recycle them.",
+        "Scrunch aluminium foil into a ball so it doesn't fall through sorting machinery."
+      ],
+      co2: "0.8", water: "20", score: "A+"
+    },
+    "Organic": {
+      icon: "🌿", color: "#4ade80",
+      detail: "Compostable · Green bin",
+      tips: [
+        "Place in the compost or green waste bin — do not put in general trash.",
+        "Avoid composting meat or dairy if using a home compost bin.",
+        "Organic waste creates methane in landfill — composting prevents this."
+      ],
+      co2: "0.2", water: "5", score: "A+"
+    }
+  };
+
+  let tmModel = null;
+
+  const $ = id => document.getElementById(id);
+
+  // File input
+  $('fileInput').addEventListener('change', () => {
+    if ($('fileInput').files[0]) loadFile($('fileInput').files[0]);
+  });
+  $('uploadZone').addEventListener('dragover', e => { e.preventDefault(); $('uploadZone').classList.add('drag'); });
+  $('uploadZone').addEventListener('dragleave', () => $('uploadZone').classList.remove('drag'));
+  $('uploadZone').addEventListener('drop', e => {
+    e.preventDefault(); $('uploadZone').classList.remove('drag');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+
+  function loadFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      $('previewImg').src = reader.result;
+      $('uploadZone').style.display  = 'none';
+      $('previewWrap').style.display = 'block';
+      $('classifyBtn').disabled      = false;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  $('clearBtn').addEventListener('click', () => {
+    $('previewWrap').style.display = 'none';
+    $('uploadZone').style.display  = 'block';
+    $('fileInput').value           = '';
+    $('classifyBtn').disabled      = true;
+    $('resultSection').style.display = 'none';
+    $('emptyState').style.display    = 'block';
+    $('errorBox').style.display      = 'none';
+  });
+
+  $('classifyBtn').addEventListener('click', classify);
+
+  async function classify() {
+    $('errorBox').style.display      = 'none';
+    $('resultSection').style.display = 'none';
+    $('emptyState').style.display    = 'none';
+    $('loader').style.display        = 'block';
+    $('classifyBtn').disabled        = true;
+    $('loaderMsg').textContent       = 'Loading AI model…';
+
+    try {
+      // Load TM model if not already loaded
+      if (!tmModel) {
+        tmModel = await tmImage.load(TM_URL + 'model.json', TM_URL + 'metadata.json');
+      }
+
+      $('loaderMsg').textContent = 'Classifying…';
+
+      // Predict
+      const predictions = await tmModel.predict($('previewImg'));
+      predictions.sort((a, b) => b.probability - a.probability);
+      const top = predictions[0];
+
+      showResult(top.className, predictions);
+
+    } catch (e) {
+      $('errorBox').textContent   = '⚠️ Could not load model. Make sure your Teachable Machine URL is correct.';
+      $('errorBox').style.display = 'block';
+      $('emptyState').style.display = 'block';
+      console.error(e);
+    } finally {
+      $('loader').style.display   = 'none';
+      $('classifyBtn').disabled   = false;
+    }
+  }
+
+  function showResult(topClass, allPreds) {
+    const cat = CATS[topClass] || {
+      icon: '♻️', color: '#39ff64',
+      detail: 'Waste item',
+      tips: ['Check with your local waste authority for disposal instructions.'],
+      co2: '0.2', water: '5', score: 'B'
+    };
+
+    // Ring
+    const ring = $('catRing');
+    ring.textContent       = cat.icon;
+    ring.style.borderColor = cat.color;
+    ring.style.background  = cat.color + '15';
+    ring.style.fontSize    = '34px';
+
+    $('catLabel').textContent = topClass;
+    $('catLabel').style.color = cat.color;
+    $('catDetail').textContent = cat.detail;
+
+    // All prediction bars
+    $('predBars').innerHTML = allPreds.map(p => {
+      const pct  = Math.round(p.probability * 100);
+      const c    = CATS[p.className] || { color: '#39ff64' };
+      const bold = p.className === topClass;
+      return `
+        <div class="pred-row">
+          <div class="pred-name" style="font-weight:${bold?'700':'400'};color:${bold?cat.color:'var(--text)'}">${p.className}</div>
+          <div class="pred-track">
+            <div class="pred-fill" style="width:${pct}%;background:${c.color}"></div>
+          </div>
+          <div class="pred-pct" style="color:${bold?cat.color:'var(--muted)'}">${pct}%</div>
+        </div>`;
+    }).join('');
+
+    // Tips
+    $('tipList').innerHTML = cat.tips.map((t, i) => `
+      <div class="tip-row">
+        <div class="tip-num" style="background:${cat.color}15;border:1px solid ${cat.color}30;color:${cat.color}">${i+1}</div>
+        <div class="tip-text">${t}</div>
+      </div>`).join('');
+
+    // Impact
+    $('iCO2').textContent   = cat.co2;
+    $('iWater').textContent = cat.water;
+    $('iScore').textContent = cat.score;
+    ['iCO2','iWater','iScore'].forEach(id => $(id).style.color = cat.color);
+
+    $('resultSection').style.display = 'block';
+  }
+</script>
+</body>
+</html>
